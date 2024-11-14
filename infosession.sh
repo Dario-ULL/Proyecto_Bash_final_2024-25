@@ -1,35 +1,31 @@
 #!/bin/bash
 
-# Default sorting criterion
-orden_por_defecto="user"  # Use "user" for sorting
-
 # Option variables
 incluir_sid_cero=false          # Indicates whether to include processes with SID 0
 usuario_especificado=()         # Array for usernames specified with -u
 directorio=""                   # Directory specified with -d
 limitar_numero_procesos=false   # Variable para comprobar si se ha especificado -w
 solo_terminal=false             # Variable para comprobar si se ha especificado -t
-tabla_sesiones=false            # Variable para comprobar si se ha especificado -e
+tabla_sesiones=true             # Variable para comprobar si se ha especificado -e
 ordenar_por_memoria=false       # Variable para comprobar si se ha especificado -sm
 ordenar_numero_grupos=false     # Variable para comprobar si se ha especificado -sg
 invertir_orden=false            # Variable para comprobar si se ha especificado -r
-
 # Function to display help
 mostrar_ayuda() {
     echo "Uso: infosession.sh [-h] [-e ] [-z] [-u user1 ... ] [ -d dir ] [-t ] [-sm] [-r]"
     echo "Uso: infosession.sh [-h] [-z] [-u user1 ... ] [ -d dir ] [-t ] [-sg/sm] [-r]"
     echo
     echo "Opciones:"
-    echo "  -h        Muestra esta ayuda y sale."
-    echo "  -z        Incluye los procesos con ID de sesión 0."
-    echo "  -u usuario Muestra los procesos para el usuario especificado."
-    echo "  -d dir    Muestra solo los procesos con archivos abiertos en el directorio especificado."
-    echo "  -w        Muestra solo los primeros 5 procesos."
-    echo "  -t        Muestra solo los procesos con terminal."
-    echo "  -e        Muestra una tabla de sesiones."
-    echo "  -sm       Ordena por uso de memoria."
-    echo "  -sg       Ordena por número de grupos de procesos."
-    echo "  -r        Invierte el orden de la ordenación."
+    echo "  -h          Muestra esta ayuda y sale."
+    echo "  -z          Incluye los procesos con ID de sesión 0."
+    echo "  -u usuario  Muestra los procesos para el usuario especificado."
+    echo "  -d dir      Muestra solo los procesos con archivos abiertos en el directorio especificado."
+    echo "  -w          Muestra solo los primeros 5 procesos."
+    echo "  -t          Muestra solo los procesos con terminal."
+    echo "  -e          Muestra una tabla de sesiones."
+    echo "  -sm         Ordena por uso de memoria."
+    echo "  -sg         Ordena por número de grupos de procesos."
+    echo "  -r          Invierte el orden de la ordenación."
     exit 0
 }
 
@@ -47,22 +43,16 @@ for cmd in ps awk id lsof; do
 done
 
 mostrar_procesos_usuario() {
-    local orden="$1"                    # Orden por SID, PGID, etc.
-    local usuarios=("${!2}")            # Lista de usuarios
-    local dir="$3"                      # Directorio (opcional)
-    local limitar_numero="$4"           # Limitar número de procesos
-    local limitar_terminal="$5"          # Limitar a procesos con terminal
-    local ordenar_por_memoria="$6"      # Ordenar por memoria
-    local ordenar_por_grupos="$7"       # Ordenar por número de grupos de procesos
-    local invertir_orden="$8"           # Invertir el orden
+    local usuarios=("${!1}")            # Lista de usuarios
+    local dir="$2"                      # Directorio (opcional)
+    local limitar_numero="$3"           # Limitar número de procesos
+    local limitar_terminal="$4"         # Limitar a procesos con terminal
+    local ordenar_por_memoria="$5"      # Ordenar por memoria
+    local invertir_orden="$6"           # Invertir el orden
     local salida_procesos               # Variable para almacenar la salida de ps
     local salida_resumen                # Variable para almacenar la tabla de resumen
     local procesos_por_sesion=()        # Array para almacenar el número de grupos por sesión
-
-    if [[ "$ordenar_por_grupos" == true && "$ordenar_por_memoria" == true ]]; then
-        mostrar_error "Opción -sg no es compatible con la opcion -sm" "8"
-    fi
-
+  
     # Comprobar existencia de usuarios
     for usuario in "${usuarios[@]}"; do
         if ! id -u "$usuario" &>/dev/null; then
@@ -89,7 +79,6 @@ mostrar_procesos_usuario() {
                     for (pid in pid_array) {
                         if ($3 == pid_array[pid]) {
                             printf "%-10s %-10s %-10s %-10s %-10s %-10s %-s\n", $1, $2, $3, $4, $5, $6, $7
-                            if (limit == "true" && ++count >= 5) exit
                         }
                     }
                 }
@@ -100,7 +89,6 @@ mostrar_procesos_usuario() {
                 if ($4 == user && ((incluir_sid_cero == "true") || ($1 != "0"))) {
                     if (limitar_terminal == "true" && $5 == "?") next
                     printf "%-10s %-10s %-10s %-10s %-10s %-10s %-s\n", $1, $2, $3, $4, $5, $6, $7
-                    if (limit == "true" && ++count >= 5) exit
                 }
             }')
         fi
@@ -109,29 +97,15 @@ mostrar_procesos_usuario() {
             salida_procesos=$(echo "$salida_procesos" | sort -k6 -n) 
         fi
 
-        if [[ "$invertir_orden" == true ]]; then
-            if [[ "$ordenar_por_memoria" == true ]]; then
+        if [[ "$ordenar_por_memoria" == true ]]; then
+            if [[ "$invertir_orden" == true ]]; then
                 salida_procesos=$(echo "$salida_procesos" | sort -k6 -n -r)
             else 
-                salida_procesos=$(echo "$salida_procesos" | sort -r) 
+                salida_procesos=$(echo "$salida_procesos" | sort -k6 -n) 
             fi
         fi
 
         echo "$salida_procesos"
-
-        if [[ "$ordenar_por_grupos" == true ]]; then
-            if [[ "$invertir_orden" == true ]]; then 
-                echo "Resumen de grupos de procesos por sesión (ordenado de más a menos):"
-                printf "$salida_procesos" | awk '{print $1}' | sort | uniq -c | sort -n -r
-            else 
-                echo "Resumen de grupos de procesos por sesión (ordenado de menos a más):"
-                printf "$salida_procesos" | awk '{print $1}' | sort | uniq -c | sort -n
-            fi
-        fi 
-
-        if [[ "$limitar_numero_procesos" == true && $(echo "$salida_procesos" | wc -l) -lt 5 ]]; then
-            printf "Advertencia: No se encontraron 5 procesos para mostrar."
-        fi
     done
 }
 
@@ -141,8 +115,13 @@ mostrar_tabla_sesiones() {
     local directorio=$3             # Directorio
     local solo_terminal=$4          # Mostrar solo procesos con terminal
     local ordenar_por_memoria=$5    # Ordenar por memoria
-    local invertir_orden=$6         # Añadimos la opción para invertir el orden
+    local ordenar_por_grupos=$6     # Ordenar por número de grupos de procesos
+    local invertir_orden=$7         # Añadimos la opción para invertir el orden
 
+    if [[ "$ordenar_por_grupos" == true && "$ordenar_por_memoria" == true ]]; then
+        mostrar_error "Opción -sg no es compatible con la opcion -sm" "8"
+    fi
+    
     # Obtener y filtrar la lista de procesos
     process_list=$(ps -eo pid,sid,pgid,pcpu,pmem,user,tty,comm --sort=sid,pgid)
 
@@ -192,8 +171,15 @@ mostrar_tabla_sesiones() {
         session_data+=("$(printf "%-10s %-15s %-15s %-15s %-15s %-10s %-15s" \ "$session" "$total_groups" "$total_memory" "$leader_pid" "$leader_user" "$leader_terminal" "$leader_command")")
     done
 
-    # Ordenar si -sm está activado
-    if [[ "$ordenar_por_memoria" == true ]]; then
+
+
+    if [[ "$ordenar_por_grupos" == true ]]; then
+        if [[ "$invertir_orden" == true ]]; then 
+            printf "%s\n" "${session_data[@]}" | sort -k2 -n -r
+        else 
+            printf "%s\n" "${session_data[@]}" | sort -k2 -n
+        fi
+    elif [[ "$ordenar_por_memoria" == true ]]; then
         # Si -r está activado, invertir el orden
         if [[ "$invertir_orden" == true ]]; then
             printf "%s\n" "${session_data[@]}" | sort -k3 -n -r
@@ -228,7 +214,7 @@ while getopts ":hzwters:u:d:" opcion; do
             solo_terminal=true
             ;;
         e)
-            tabla_sesiones=true
+            tabla_sesiones=false
             ;;
         r)
             invertir_orden=true 
@@ -271,10 +257,10 @@ done
 
 # Show the session table if -e is set
 if [[ "$tabla_sesiones" == true ]]; then
-    if [[ "$ordenar_numero_grupos" == true ]]; then
-        mostrar_error "Opción -sg no es compatible con la tabla de sesiones" "7"
-    fi
-    mostrar_tabla_sesiones "$incluir_sid_cero" usuario_especificado[@] "$directorio" "$solo_terminal" "$ordenar_por_memoria" "$invertir_orden"
+    mostrar_tabla_sesiones "$incluir_sid_cero" usuario_especificado[@] "$directorio" "$solo_terminal" "$ordenar_por_memoria" "$ordenar_numero_grupos" "$invertir_orden"
 else
-    mostrar_procesos_usuario "$orden_por_defecto" usuario_especificado[@] "$directorio" "$limitar_numero_procesos" "$solo_terminal" "$ordenar_por_memoria" "$ordenar_numero_grupos" "$invertir_orden"
+    if [[ "$ordenar_numero_grupos" == true ]]; then
+        mostrar_error "Opción -sg no es compatible con la tabla de procesos de usuario" "7"
+    fi
+    mostrar_procesos_usuario usuario_especificado[@] "$directorio" "$limitar_numero_procesos" "$solo_terminal" "$ordenar_por_memoria" "$invertir_orden"
 fi
